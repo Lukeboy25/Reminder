@@ -13,7 +13,6 @@ class ReminderAdapter(private val reminders: List<Reminder>) : RecyclerView.Adap
         )
     }
 
-
     override fun getItemCount(): Int {
         return reminders.size
     }
