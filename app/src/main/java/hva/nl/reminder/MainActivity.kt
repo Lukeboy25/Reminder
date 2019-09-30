@@ -13,6 +13,10 @@ import androidx.recyclerview.widget.RecyclerView
 
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.content_main.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 const val ADD_REMINDER_REQUEST_CODE = 100
 
@@ -20,11 +24,13 @@ class MainActivity : AppCompatActivity() {
 
     private val reminders = arrayListOf<Reminder>()
     private val reminderAdapter = ReminderAdapter(reminders)
+    private lateinit var reminderRepository: ReminderRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         setSupportActionBar(toolbar)
+        reminderRepository = ReminderRepository(this)
 
         initViews()
 
@@ -41,8 +47,12 @@ class MainActivity : AppCompatActivity() {
             when (requestCode) {
                 ADD_REMINDER_REQUEST_CODE -> {
                     val reminder = data!!.getParcelableExtra<Reminder>(EXTRA_REMINDER)
-                    reminders.add(reminder)
-                    reminderAdapter.notifyDataSetChanged()
+                    CoroutineScope(Dispatchers.Main).launch {
+                        withContext(Dispatchers.IO) {
+                            reminderRepository.insertReminder(reminder)
+                        }
+                        getRemindersFromDatabase()
+                    }
                 }
             }
         }
@@ -66,8 +76,13 @@ class MainActivity : AppCompatActivity() {
             // Callback triggered when a user swiped an item.
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val position = viewHolder.adapterPosition
-                reminders.removeAt(position)
-                reminderAdapter.notifyDataSetChanged()
+                val reminderToDelete = reminders[position]
+                CoroutineScope(Dispatchers.Main).launch {
+                    withContext(Dispatchers.IO) {
+                        reminderRepository.deleteReminder(reminderToDelete)
+                    }
+                    getRemindersFromDatabase()
+                }
             }
         }
         return ItemTouchHelper(callback)
@@ -79,7 +94,20 @@ class MainActivity : AppCompatActivity() {
         rvReminders.adapter = reminderAdapter
         rvReminders.addItemDecoration(DividerItemDecoration(this@MainActivity, DividerItemDecoration.VERTICAL))
         createItemTouchHelper().attachToRecyclerView(rvReminders)
+        getRemindersFromDatabase()
     }
+
+    private fun getRemindersFromDatabase() {
+        CoroutineScope(Dispatchers.Main).launch {
+            val reminders = withContext(Dispatchers.IO) {
+                reminderRepository.getAllReminders()
+            }
+            this@MainActivity.reminders.clear()
+            this@MainActivity.reminders.addAll(reminders)
+            reminderAdapter.notifyDataSetChanged()
+        }
+    }
+
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         // Inflate the menu; this adds items to the action bar if it is present.
